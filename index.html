@@ -679,6 +679,20 @@
   </div>
 </main>
 
+
+<div id="arena-container">
+  <div id="arena-header">
+    <span id="arena-wave">Idle</span>
+    <div id="arena-hp-wrap"><div id="arena-hp-fill"></div></div>
+    <span id="arena-hp-text">—</span>
+  </div>
+  <canvas id="arena-canvas" width="220" height="180"></canvas>
+  <div id="arena-overlay">
+    <div id="arena-char-preview">🤺</div>
+    <div id="arena-overlay-title">Defend your base!</div>
+    <button id="arena-start">▶ Start</button>
+  </div>
+</div>
 <script>
 /* ─────────────────────────────────────────────────────────────────
    Game State
@@ -1484,18 +1498,5 @@ drawArenaIdle();
 requestAnimationFrame(updateScrollBtns);
 </script>
 
-<div id="arena-container">
-  <div id="arena-header">
-    <span id="arena-wave">Idle</span>
-    <div id="arena-hp-wrap"><div id="arena-hp-fill"></div></div>
-    <span id="arena-hp-text">—</span>
-  </div>
-  <canvas id="arena-canvas" width="220" height="180"></canvas>
-  <div id="arena-overlay">
-    <div id="arena-char-preview">🤺</div>
-    <div id="arena-overlay-title">Defend your base!</div>
-    <button id="arena-start">▶ Start</button>
-  </div>
-</div>
 </body>
 </html>
