@@ -540,6 +540,83 @@
       .upgrade { width: calc(50% - 5px); flex-direction: column; align-items: flex-start; }
       .card { padding: 28px 20px; }
     }
+
+    .shop-section-divider {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 2px; flex-shrink: 0; margin-top: 6px;
+    }
+    .shop-section-divider::before, .shop-section-divider::after {
+      content: ''; flex: 1; height: 1px; background: rgba(255,255,255,0.1);
+    }
+    .shop-section-divider span {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.2em;
+      text-transform: uppercase; color: rgba(255,255,255,0.3); white-space: nowrap;
+    }
+    .upgrade.char-equipped {
+      background: rgba(251,191,36,0.08);
+      border-color: rgba(251,191,36,0.45);
+      box-shadow: 0 0 16px rgba(251,191,36,0.1);
+      cursor: default;
+    }
+    .upgrade.char-equipped .upgrade-owned { color: #fbbf24; font-weight: 800; }
+    #arena-container {
+      position: fixed; bottom: 20px; right: 20px;
+      width: 220px; display: flex; flex-direction: column;
+      z-index: 15;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 20px;
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      overflow: hidden;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+      user-select: none; -webkit-user-select: none;
+    }
+    #arena-header {
+      padding: 8px 12px 7px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; gap: 8px;
+    }
+    #arena-wave {
+      font-size: 11px; font-weight: 700;
+      color: rgba(255,255,255,0.45); letter-spacing: 0.08em; flex-shrink: 0;
+    }
+    #arena-hp-wrap {
+      flex: 1; height: 6px; background: rgba(255,255,255,0.1);
+      border-radius: 3px; overflow: hidden;
+    }
+    #arena-hp-fill {
+      height: 100%; width: 100%;
+      background: linear-gradient(90deg, #34d399, #60a5fa);
+      border-radius: 3px; transition: width 0.15s ease, background 0.3s;
+    }
+    #arena-hp-text {
+      font-size: 10px; font-weight: 600;
+      color: rgba(255,255,255,0.35); flex-shrink: 0;
+    }
+    #arena-canvas { display: block; }
+    #arena-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      background: rgba(8,6,24,0.8);
+      backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    }
+    #arena-overlay.hidden { display: none; }
+    #arena-overlay-title {
+      font-size: 13px; font-weight: 700;
+      color: rgba(255,255,255,0.65); text-align: center;
+    }
+    #arena-char-preview { font-size: 42px; line-height: 1; }
+    #arena-start {
+      padding: 9px 28px; border-radius: 30px; border: none;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      color: white; font-size: 14px; font-weight: 800; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(167,139,250,0.4);
+      transition: transform 0.12s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.12s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #arena-start:hover  { transform: scale(1.06); box-shadow: 0 6px 28px rgba(167,139,250,0.6); }
+    #arena-start:active { transform: scale(0.95); }
   </style>
 </head>
 <body>
@@ -728,6 +805,7 @@ function buildShop() {
     card.addEventListener('touchend', e => e.preventDefault());
     shopList.appendChild(card);
   });
+  buildCharacterSection();
 }
 
 function refreshShopAffordability() {
@@ -765,6 +843,7 @@ function refreshShopAffordability() {
       card.classList.add('locked');
     }
   });
+  refreshCharacterSection();
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -984,6 +1063,7 @@ function loop(now) {
   document.getElementById('session').textContent = `${mm}:${ss}`;
 
   drawParticles(dt);
+  arenaUpdate(dt);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -1091,11 +1171,331 @@ document.addEventListener('keydown', e => {
 /* ─────────────────────────────────────────────────────────────────
    Init
 ───────────────────────────────────────────────────────────────── */
+/* =================================================================
+   CHARACTERS
+================================================================= */
+const CHARACTERS = [
+  { id:'knight', name:'Knight', emoji:'🤺', hp:100, atk:10,  atkSpeed:1.5, cost:0,      desc:'100HP · 10ATK · 1.5s' },
+  { id:'archer', name:'Archer', emoji:'🏹', hp:80,  atk:15,  atkSpeed:1.0, cost:500,    desc:'80HP · 15ATK · 1.0s' },
+  { id:'wizard', name:'Wizard', emoji:'🧙', hp:60,  atk:25,  atkSpeed:2.0, cost:2000,   desc:'60HP · 25ATK · 2.0s' },
+  { id:'ninja',  name:'Ninja',  emoji:'🥷', hp:90,  atk:20,  atkSpeed:0.8, cost:8000,   desc:'90HP · 20ATK · 0.8s' },
+  { id:'robot',  name:'Robot',  emoji:'🤖', hp:150, atk:30,  atkSpeed:1.2, cost:30000,  desc:'150HP · 30ATK · 1.2s' },
+  { id:'dragon', name:'Dragon', emoji:'🐉', hp:200, atk:50,  atkSpeed:1.5, cost:100000, desc:'200HP · 50ATK · 1.5s' },
+];
+const charOwned  = new Set(['knight']);
+let activeCharId = 'knight';
+
+function buildCharacterSection() {
+  const divider = document.createElement('div');
+  divider.className = 'shop-section-divider';
+  divider.innerHTML = '<span>Characters</span>';
+  shopList.appendChild(divider);
+  CHARACTERS.forEach(ch => {
+    const card = document.createElement('div');
+    card.className = 'upgrade';
+    card.id = 'char-' + ch.id;
+    card.innerHTML =
+      '<div class="upgrade-icon">' + ch.emoji + '</div>' +
+      '<div class="upgrade-info">' +
+        '<div class="upgrade-name">' + ch.name + '</div>' +
+        '<div class="upgrade-desc" id="chd-' + ch.id + '">' + ch.desc + '</div>' +
+      '</div>' +
+      '<div class="upgrade-right">' +
+        '<div class="upgrade-cost" id="chc-' + ch.id + '">' +
+          (ch.cost === 0 ? 'FREE' : fmtNum(ch.cost)) +
+        '</div>' +
+        '<div class="upgrade-owned" id="chs-' + ch.id + '">—</div>' +
+      '</div>';
+    card.addEventListener('click',      e => onCharClick(ch, e));
+    card.addEventListener('touchstart', e => onCharClick(ch, e), { passive: false });
+    card.addEventListener('touchend',   e => e.preventDefault());
+    shopList.appendChild(card);
+  });
+}
+
+function refreshCharacterSection() {
+  CHARACTERS.forEach(ch => {
+    const card = document.getElementById('char-' + ch.id);
+    if (!card) return;
+    const isOwned    = charOwned.has(ch.id);
+    const isEquipped = ch.id === activeCharId;
+    const statusEl   = document.getElementById('chs-' + ch.id);
+    card.classList.remove('affordable', 'locked', 'maxed', 'char-equipped');
+    if (isEquipped) {
+      card.classList.add('char-equipped');
+      statusEl.textContent = '✓ Active';
+    } else if (isOwned) {
+      card.classList.add('affordable');
+      statusEl.textContent = 'Equip';
+    } else if (count >= ch.cost) {
+      card.classList.add('affordable');
+      statusEl.textContent = 'Unlock';
+    } else {
+      card.classList.add('locked');
+      statusEl.textContent = 'Unlock';
+    }
+  });
+}
+
+function onCharClick(ch, e) {
+  if (e) e.preventDefault();
+  if (charOwned.has(ch.id)) {
+    if (ch.id === activeCharId) return;
+    equipCharacter(ch.id);
+    spawnUpgradeRipple(document.getElementById('char-' + ch.id), e);
+    playBuy();
+    showToast(ch.emoji + ' ' + ch.name + ' equipped!');
+  } else if (count >= ch.cost) {
+    count -= ch.cost;
+    charOwned.add(ch.id);
+    equipCharacter(ch.id);
+    spawnUpgradeRipple(document.getElementById('char-' + ch.id), e);
+    playBuy();
+    showToast(ch.emoji + ' ' + ch.name + ' unlocked & equipped!');
+  }
+}
+
+function equipCharacter(id) {
+  activeCharId = id;
+  const ch = CHARACTERS.find(c => c.id === id);
+  if (arenaActive) {
+    charMaxHP = ch.hp;
+    charHP    = Math.min(charHP, charMaxHP);
+  } else {
+    charMaxHP = ch.hp;
+    charHP    = ch.hp;
+  }
+  document.getElementById('arena-char-preview').textContent = ch.emoji;
+  updateArenaHPBar();
+  refreshCharacterSection();
+  if (!arenaActive) drawArenaIdle();
+}
+
+/* =================================================================
+   ARENA MINI-GAME
+================================================================= */
+const arenaCanvas  = document.getElementById('arena-canvas');
+const actx         = arenaCanvas.getContext('2d');
+arenaCanvas.width  = 220;
+arenaCanvas.height = 180;
+const CHAR_X = 178, CHAR_Y = 100, ATTACK_RANGE = 44;
+
+let arenaActive      = false;
+let charHP           = 100;
+let charMaxHP        = 100;
+let charHitFlash     = 0;
+let charAtkTimer     = 0;
+let arenaZombies     = [];
+let arenaDmgNums     = [];
+let arenaWave        = 0;
+let zombiesLeft      = 0;
+let zombieSpawnTimer = 0;
+let wavePhase        = 'idle';
+let waveBreakTimer   = 0;
+
+const arenaOverlay  = document.getElementById('arena-overlay');
+const arenaTitle    = document.getElementById('arena-overlay-title');
+const arenaStartBtn = document.getElementById('arena-start');
+arenaStartBtn.addEventListener('click', startArena);
+
+function startArena() {
+  const ch  = CHARACTERS.find(c => c.id === activeCharId);
+  charMaxHP = ch.hp; charHP = ch.hp;
+  arenaWave = 0; arenaActive = true;
+  arenaZombies = []; arenaDmgNums = [];
+  charHitFlash = 0; charAtkTimer = 0.4;
+  arenaOverlay.classList.add('hidden');
+  updateArenaHPBar();
+  arenaNextWave();
+}
+
+function arenaNextWave() {
+  arenaWave++;
+  zombiesLeft      = 3 + arenaWave * 2;
+  zombieSpawnTimer = 0.5;
+  wavePhase        = 'spawning';
+  document.getElementById('arena-wave').textContent = 'Wave ' + arenaWave;
+}
+
+function arenaGameOver() {
+  arenaActive = false; wavePhase = 'idle';
+  const survived = Math.max(0, arenaWave - 1);
+  arenaTitle.textContent = '💀 Wave ' + survived + ' survived';
+  arenaStartBtn.textContent = '↺ Restart';
+  arenaOverlay.classList.remove('hidden');
+  drawArenaIdle();
+  if (survived > 0) {
+    const bonus = survived * 20;
+    count += bonus;
+    showToast('+' + fmtNum(bonus) + ' bonus clicks!');
+  }
+}
+
+function spawnZombie() {
+  const hp  = 20 + arenaWave * 15;
+  arenaZombies.push({
+    x: -22, y: 50 + Math.random() * 90,
+    hp, maxHp: hp,
+    speed:  26 + arenaWave * 3,
+    damage:  3 + arenaWave * 2,
+    dmgTimer: 1.0, hitFlash: 0,
+  });
+}
+
+function arenaUpdate(dt) {
+  if (!arenaActive) return;
+  const ch = CHARACTERS.find(c => c.id === activeCharId);
+
+  if (wavePhase === 'spawning') {
+    zombieSpawnTimer -= dt;
+    if (zombieSpawnTimer <= 0 && zombiesLeft > 0) {
+      spawnZombie(); zombiesLeft--;
+      zombieSpawnTimer = Math.max(0.4, 2.0 - arenaWave * 0.1);
+    }
+    if (zombiesLeft === 0) wavePhase = 'clearing';
+  }
+  if (wavePhase === 'clearing' && arenaZombies.length === 0) {
+    wavePhase = 'break'; waveBreakTimer = 2.2;
+  }
+  if (wavePhase === 'break') {
+    waveBreakTimer -= dt;
+    if (waveBreakTimer <= 0) arenaNextWave();
+  }
+
+  charHitFlash = Math.max(0, charHitFlash - dt * 5);
+  for (const z of arenaZombies) {
+    z.hitFlash = Math.max(0, z.hitFlash - dt * 5);
+    if (z.x < CHAR_X - ATTACK_RANGE) {
+      z.x += z.speed * dt;
+    } else {
+      z.dmgTimer -= dt;
+      if (z.dmgTimer <= 0) {
+        z.dmgTimer = 1.1;
+        charHP = Math.max(0, charHP - z.damage);
+        charHitFlash = 1;
+        arenaDmgNums.push({
+          x: CHAR_X + (Math.random()-0.5)*18, y: CHAR_Y - 14,
+          text: '-' + z.damage, color: '#fb7185', size: 12,
+          vy: -42, life: 0.75, maxLife: 0.75,
+        });
+        updateArenaHPBar();
+        if (charHP <= 0) { arenaGameOver(); return; }
+      }
+    }
+  }
+
+  charAtkTimer -= dt;
+  if (charAtkTimer <= 0 && arenaZombies.length > 0) {
+    charAtkTimer = ch.atkSpeed;
+    const target = arenaZombies.reduce((a, b) => a.x > b.x ? a : b);
+    target.hp -= ch.atk; target.hitFlash = 1;
+    arenaDmgNums.push({
+      x: target.x + (Math.random()-0.5)*14, y: target.y - 20,
+      text: '-' + ch.atk, color: '#a78bfa', size: 13,
+      vy: -50, life: 0.65, maxLife: 0.65,
+    });
+    arenaZombies = arenaZombies.filter(z => z.hp > 0);
+  }
+
+  for (const d of arenaDmgNums) { d.y += d.vy * dt; d.life -= dt; }
+  arenaDmgNums = arenaDmgNums.filter(d => d.life > 0);
+  drawArena();
+}
+
+function updateArenaHPBar() {
+  const pct  = Math.max(0, charHP / charMaxHP) * 100;
+  const fill = document.getElementById('arena-hp-fill');
+  fill.style.width = pct + '%';
+  fill.style.background =
+    pct > 50 ? 'linear-gradient(90deg,#34d399,#60a5fa)' :
+    pct > 25 ? 'linear-gradient(90deg,#fbbf24,#fb923c)' :
+               'linear-gradient(90deg,#fb7185,#f43f5e)';
+  document.getElementById('arena-hp-text').textContent =
+    Math.ceil(charHP) + '/' + charMaxHP;
+}
+
+function drawArenaBase() {
+  const W = 220, H = 180;
+  actx.clearRect(0,0,W,H);
+  actx.fillStyle = '#0d0a1e'; actx.fillRect(0,0,W,H);
+  actx.strokeStyle = 'rgba(255,255,255,0.03)'; actx.lineWidth = 1;
+  for (let x=0;x<W;x+=22){actx.beginPath();actx.moveTo(x,0);actx.lineTo(x,H);actx.stroke();}
+  for (let y=0;y<H;y+=22){actx.beginPath();actx.moveTo(0,y);actx.lineTo(W,y);actx.stroke();}
+  actx.strokeStyle='rgba(167,139,250,0.2)'; actx.lineWidth=1.5;
+  actx.beginPath(); actx.moveTo(0,148); actx.lineTo(W,148); actx.stroke();
+}
+
+function drawArenaIdle() {
+  drawArenaBase();
+  const ch = CHARACTERS.find(c => c.id === activeCharId);
+  actx.font = '46px serif';
+  actx.textAlign = 'center'; actx.textBaseline = 'middle';
+  actx.fillText(ch.emoji, 110, 90);
+}
+
+function drawArena() {
+  const W = 220, H = 180;
+  drawArenaBase();
+  const ch = CHARACTERS.find(c => c.id === activeCharId);
+  if (charHitFlash > 0) {
+    actx.save(); actx.globalAlpha = charHitFlash * 0.35;
+    actx.fillStyle = '#fb7185';
+    actx.fillRect(CHAR_X-26, CHAR_Y-26, 52, 52); actx.restore();
+  }
+  actx.font = '34px serif';
+  actx.textAlign = 'center'; actx.textBaseline = 'middle';
+  actx.fillText(ch.emoji, CHAR_X, CHAR_Y);
+
+  for (const z of arenaZombies) {
+    if (z.hitFlash > 0) {
+      actx.save(); actx.globalAlpha = z.hitFlash*0.45;
+      actx.fillStyle='#a78bfa'; actx.fillRect(z.x-17,z.y-17,34,34); actx.restore();
+    }
+    actx.font = '26px serif';
+    actx.fillText('🧟', z.x, z.y);
+    const f = z.hp / z.maxHp;
+    actx.fillStyle='rgba(0,0,0,0.55)'; actx.fillRect(z.x-17,z.y-27,34,4);
+    actx.fillStyle = f>0.5?'#34d399':f>0.25?'#fbbf24':'#fb7185';
+    actx.fillRect(z.x-17, z.y-27, 34*f, 4);
+  }
+
+  actx.textAlign = 'center';
+  for (const d of arenaDmgNums) {
+    actx.globalAlpha = Math.max(0, d.life/d.maxLife);
+    actx.fillStyle = d.color;
+    actx.font = 'bold ' + d.size + 'px sans-serif';
+    actx.fillText(d.text, d.x, d.y);
+  }
+  actx.globalAlpha = 1;
+
+  if (wavePhase === 'break') {
+    actx.fillStyle = 'rgba(167,139,250,0.9)';
+    actx.font = 'bold 13px sans-serif';
+    actx.fillText('Wave Clear! ✨', W/2, H/2);
+  }
+}
+
 buildShop();
 refreshShopAffordability();
 recomputePower();
+updateArenaHPBar();
+drawArenaIdle();
 // Set initial scroll button states now that cards exist
 requestAnimationFrame(updateScrollBtns);
 </script>
+
+<div id="arena-container">
+  <div id="arena-header">
+    <span id="arena-wave">Idle</span>
+    <div id="arena-hp-wrap"><div id="arena-hp-fill"></div></div>
+    <span id="arena-hp-text">—</span>
+  </div>
+  <canvas id="arena-canvas" width="220" height="180"></canvas>
+  <div id="arena-overlay">
+    <div id="arena-char-preview">🤺</div>
+    <div id="arena-overlay-title">Defend your base!</div>
+    <button id="arena-start">▶ Start</button>
+  </div>
+</div>
 </body>
 </html>
