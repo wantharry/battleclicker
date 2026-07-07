@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>✨ Clicker Game</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    /* ── Animated gradient background ─────────────────────────── */
+    body {
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      background-size: 400% 400%;
+      animation: bgShift 12s ease infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(16px, 3vw, 36px);
+      min-height: 100dvh;
+      padding: 16px;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    @keyframes bgShift {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* ── Particle canvas ───────────────────────────────────────── */
+    #canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* ── Shared glass surface ──────────────────────────────────── */
+    .glass {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 28px;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      box-shadow:
+        0 24px 64px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(255,255,255,0.05) inset;
+    }
+
+    /* ════════════════════════════════════════════════════════════
+       SHOP PANEL
+    ═══════════════════════════════════════════════════════════ */
+    .shop {
+      width: clamp(230px, 23vw, 300px);
+      height: min(92dvh, 700px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .shop-header {
+      padding: 20px 20px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
+    }
+    .shop-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+    }
+    .shop-balance {
+      margin-top: 6px;
+      font-size: 22px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #fbbf24, #f472b6);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 10px rgba(251,191,36,0.4));
+      transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1);
+    }
+    .shop-balance.bump { transform: scale(1.12); }
+
+    /* Scroll buttons */
+    .shop-scroll-btn {
+      flex-shrink: 0;
+      width: 100%;
+      height: 38px;
+      border: none;
+      background: rgba(255,255,255,0.04);
+      color: rgba(255,255,255,0.55);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+      transition: background 0.18s, color 0.18s, opacity 0.18s;
+      -webkit-tap-highlight-color: transparent;
+      outline: none;
+    }
+    .shop-scroll-btn:hover:not(:disabled) {
+      background: rgba(167,139,250,0.14);
+      color: #a78bfa;
+    }
+    .shop-scroll-btn:active:not(:disabled) {
+      background: rgba(167,139,250,0.24);
+    }
+    .shop-scroll-btn:disabled {
+      opacity: 0.18;
+      cursor: default;
+    }
+    #scrollUp  { border-bottom: 1px solid rgba(255,255,255,0.07); }
+    #scrollDown { border-top:   1px solid rgba(255,255,255,0.07); }
+
+    /* Upgrade list viewport */
+    .shop-viewport {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    /* Soft fade edges hint that more items exist */
+    .shop-viewport::before,
+    .shop-viewport::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      height: 28px;
+      pointer-events: none;
+      z-index: 2;
+      transition: opacity 0.25s;
+    }
+    .shop-viewport::before {
+      top: 0;
+      background: linear-gradient(to bottom, rgba(17,15,40,0.7), transparent);
+    }
+    .shop-viewport::after {
+      bottom: 0;
+      background: linear-gradient(to top, rgba(17,15,40,0.7), transparent);
+    }
+    .shop-viewport.at-top::before    { opacity: 0; }
+    .shop-viewport.at-bottom::after  { opacity: 0; }
+
+    /* Upgrade list */
+    .shop-list {
+      height: 100%;
+      overflow-y: scroll;
+      scrollbar-width: none;
+      padding: 12px 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .shop-list::-webkit-scrollbar { display: none; }
+
+    /* Single upgrade card */
+    .upgrade {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 11px 13px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      cursor: pointer;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition:
+        background 0.2s,
+        border-color 0.2s,
+        transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+        box-shadow 0.2s,
+        opacity 0.25s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Can afford */
+    .upgrade.affordable {
+      background: rgba(167,139,250,0.1);
+      border-color: rgba(167,139,250,0.3);
+      box-shadow: 0 0 16px rgba(167,139,250,0.12);
+    }
+    .upgrade.affordable:hover {
+      background: rgba(167,139,250,0.18);
+      border-color: rgba(167,139,250,0.5);
+      box-shadow: 0 0 24px rgba(167,139,250,0.22);
+      transform: translateY(-2px) scale(1.01);
+    }
+    .upgrade.affordable:active {
+      transform: scale(0.95);
+    }
+
+    /* Cannot afford */
+    .upgrade.locked {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* Fully upgraded */
+    .upgrade.maxed {
+      background: rgba(52, 211, 153, 0.08);
+      border-color: rgba(52, 211, 153, 0.3);
+      cursor: default;
+      opacity: 0.75;
+    }
+    .upgrade.maxed .upgrade-cost { color: #34d399; }
+    .upgrade.maxed .upgrade-desc { color: #34d399; opacity: 0.8; }
+
+    /* Purchase flash */
+    .upgrade.bought-flash {
+      animation: buyFlash 0.35s ease-out;
+    }
+    @keyframes buyFlash {
+      0%   { background: rgba(167,139,250,0.45); border-color: rgba(167,139,250,0.9); }
+      100% { }
+    }
+
+    /* Ripple inside upgrade card */
+    .upgrade .up-ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(167,139,250,0.35);
+      transform: scale(0);
+      animation: upRippleAnim 0.45s ease-out forwards;
+      pointer-events: none;
+    }
+    @keyframes upRippleAnim { to { transform: scale(6); opacity: 0; } }
+
+    .upgrade-icon {
+      font-size: 24px;
+      line-height: 1;
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 6px rgba(167,139,250,0.5));
+    }
+
+    .upgrade-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .upgrade-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.9);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .upgrade-desc {
+      font-size: 10px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.38);
+      margin-top: 2px;
+      letter-spacing: 0.04em;
+    }
+
+    .upgrade-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .upgrade-cost {
+      font-size: 13px;
+      font-weight: 800;
+      color: #fbbf24;
+    }
+    .upgrade-owned {
+      font-size: 10px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.07);
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+
+    /* ════════════════════════════════════════════════════════════
+       GAME CARD
+    ═══════════════════════════════════════════════════════════ */
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(20px, 4vw, 40px);
+      padding: clamp(28px, 5vw, 56px) clamp(32px, 6vw, 80px);
+    }
+
+    .title {
+      font-size: clamp(13px, 1.8vw, 17px);
+      font-weight: 600;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+    }
+
+    /* ── Counter ─── */
+    .counter-wrap { text-align: center; line-height: 1; }
+    .counter {
+      font-size: clamp(64px, 12vw, 130px);
+      font-weight: 800;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 24px rgba(167,139,250,0.5));
+      transition: transform 0.1s cubic-bezier(0.34,1.56,0.64,1);
+      display: inline-block;
+    }
+    .counter.bump { transform: scale(1.08); }
+    .counter-label {
+      font-size: clamp(10px, 1.3vw, 13px);
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.28);
+      margin-top: 6px;
+    }
+    /* Sub-stats under counter */
+    .counter-sub {
+      margin-top: 8px;
+      font-size: clamp(11px, 1.2vw, 13px);
+      font-weight: 600;
+      color: rgba(255,255,255,0.35);
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .counter-sub span { color: #a78bfa; }
+
+    /* ── Button ─── */
+    .btn-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-wrap::before {
+      content: '';
+      position: absolute;
+      width: 200%; height: 200%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(167,139,250,0.18) 0%, transparent 70%);
+      animation: glowPulse 2.4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes glowPulse {
+      0%,100% { transform: scale(0.85); opacity: 0.7; }
+      50%      { transform: scale(1.05); opacity: 1; }
+    }
+    .btn {
+      position: relative;
+      width: clamp(110px, 18vw, 168px);
+      height: clamp(110px, 18vw, 168px);
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      outline: none;
+      overflow: hidden;
+      background: conic-gradient(from 180deg at 50% 50%,
+        #a78bfa 0deg, #60a5fa 120deg, #34d399 240deg, #a78bfa 360deg);
+      animation: btnSpin 6s linear infinite;
+      box-shadow:
+        0 0 0 6px rgba(167,139,250,0.18),
+        0 0 40px rgba(167,139,250,0.4),
+        0 12px 40px rgba(0,0,0,0.5);
+      transition: transform 0.12s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.12s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    @keyframes btnSpin {
+      from { filter: hue-rotate(0deg); }
+      to   { filter: hue-rotate(360deg); }
+    }
+    .btn::before {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%,
+        rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.06) 60%, transparent 100%);
+      pointer-events: none;
+    }
+    .btn-icon {
+      position: relative;
+      font-size: clamp(36px, 6vw, 64px);
+      line-height: 1;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
+      transition: transform 0.1s ease;
+    }
+    .btn:active, .btn.pressed {
+      transform: scale(0.88);
+      box-shadow:
+        0 0 0 3px rgba(167,139,250,0.12),
+        0 0 20px rgba(167,139,250,0.3),
+        0 4px 16px rgba(0,0,0,0.4);
+    }
+    .btn.pressed .btn-icon { transform: scale(0.92); }
+
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+      transform: scale(0);
+      animation: rippleAnim 0.55s cubic-bezier(0.25,0.46,0.45,0.94) forwards;
+      pointer-events: none;
+    }
+    @keyframes rippleAnim { to { transform: scale(3.5); opacity: 0; } }
+
+    /* ── Stats bar ─── */
+    .stats {
+      display: flex;
+      gap: clamp(16px, 3vw, 36px);
+      align-items: center;
+    }
+    .stat { text-align: center; }
+    .stat-value {
+      font-size: clamp(16px, 2.5vw, 22px);
+      font-weight: 700;
+      color: #a78bfa;
+    }
+    .stat-label {
+      font-size: clamp(9px, 1vw, 11px);
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.28);
+      margin-top: 4px;
+    }
+    .divider { width: 1px; height: 32px; background: rgba(255,255,255,0.1); }
+
+    /* ── Streak ─── */
+    .streak {
+      font-size: clamp(11px, 1.4vw, 13px);
+      font-weight: 600;
+      color: #fbbf24;
+      letter-spacing: 0.1em;
+      height: 16px;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .streak.visible { opacity: 1; transform: translateY(0); }
+
+    /* ── Flash ─── */
+    #flash {
+      position: fixed; inset: 0;
+      pointer-events: none; z-index: 5;
+      background: radial-gradient(ellipse at center, rgba(167,139,250,0.12) 0%, transparent 70%);
+      opacity: 0;
+    }
+    #flash.pop { animation: flashAnim 0.25s ease-out forwards; }
+    @keyframes flashAnim { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+    /* ── Floating labels ─── */
+    .float-label {
+      position: fixed;
+      pointer-events: none;
+      z-index: 20;
+      font-size: clamp(16px, 2.5vw, 24px);
+      font-weight: 800;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 8px rgba(167,139,250,0.8));
+      animation: floatUp 0.95s cubic-bezier(0.25,0.46,0.45,0.94) forwards;
+      transform-origin: center bottom;
+      white-space: nowrap;
+    }
+    @keyframes floatUp {
+      0%   { transform: translateY(0)    scale(1.4); opacity: 1; }
+      30%  { transform: translateY(-28px) scale(1.0); opacity: 1; }
+      100% { transform: translateY(-90px) scale(0.7); opacity: 0; }
+    }
+
+    /* ── Purchase toast ─── */
+    .purchase-toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(16px);
+      background: rgba(167,139,250,0.18);
+      border: 1px solid rgba(167,139,250,0.4);
+      border-radius: 40px;
+      padding: 10px 22px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #c4b5fd;
+      backdrop-filter: blur(16px);
+      pointer-events: none;
+      z-index: 30;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .purchase-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── Mobile layout ─── */
+    @media (max-width: 700px) {
+      body {
+        flex-direction: column-reverse;
+        overflow-y: auto;
+        overflow-x: hidden;
+        justify-content: flex-end;
+        align-items: stretch;
+        padding: 12px 12px 20px;
+        gap: 12px;
+      }
+      .shop {
+        width: 100%;
+        max-height: none;
+        height: auto;
+      }
+      .shop-scroll-btn { display: none; }
+      .shop-viewport { overflow: visible; }
+      .shop-viewport::before, .shop-viewport::after { display: none; }
+      .shop-list {
+        height: auto;
+        overflow-y: visible;
+        overflow-x: visible;
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+      .upgrade { width: calc(50% - 5px); flex-direction: column; align-items: flex-start; }
+      .card { padding: 28px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="flash"></div>
+<canvas id="canvas"></canvas>
+<div class="purchase-toast" id="toast"></div>
+
+<!-- ══ SHOP ══════════════════════════════════════════════════════ -->
+<aside class="shop glass" id="shop">
+  <div class="shop-header">
+    <div class="shop-title">🛒 Shop</div>
+    <div class="shop-balance" id="shopBalance">0</div>
+  </div>
+  <button class="shop-scroll-btn" id="scrollUp" disabled>▲ scroll up</button>
+  <div class="shop-viewport at-top" id="shopViewport">
+    <div class="shop-list" id="shopList">
+      <!-- Populated by JS -->
+    </div>
+  </div>
+  <button class="shop-scroll-btn" id="scrollDown">▼ scroll down</button>
+</aside>
+
+<!-- ══ GAME CARD ═════════════════════════════════════════════════ -->
+<main class="card glass">
+  <p class="title">✨ Clicker</p>
+
+  <div class="counter-wrap">
+    <div class="counter" id="counter">0</div>
+    <div class="counter-label">Total Clicks</div>
+    <div class="counter-sub" id="counterSub">
+      <span id="subClick">+1</span>/click &nbsp;·&nbsp;
+      <span id="subAuto">0</span>/sec
+    </div>
+  </div>
+
+  <div class="btn-wrap">
+    <button class="btn" id="btn" aria-label="Click me">
+      <span class="btn-icon">⚡</span>
+    </button>
+  </div>
+
+  <div class="streak" id="streak">🔥 Streak!</div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-value" id="cps">0</div>
+      <div class="stat-label">Per Second</div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat">
+      <div class="stat-value" id="best">0</div>
+      <div class="stat-label">Best / Sec</div>
+    </div>
+    <div class="divider"></div>
+    <div class="stat">
+      <div class="stat-value" id="session">0:00</div>
+      <div class="stat-label">Session</div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ─────────────────────────────────────────────────────────────────
+   Game State
+───────────────────────────────────────────────────────────────── */
+let count        = 0;       // true click total
+let displayCount = 0;       // for smooth animated counter
+let clickPower   = 1;       // clicks granted per manual click
+let autoPerSec   = 0;       // clicks granted per second (passive)
+let autoAccum    = 0;       // fractional accumulator for auto clicks
+let clicksInWindow = [];
+let bestCPS      = 0;
+let streakTimer  = null;
+let startTime    = Date.now();
+
+/* ─────────────────────────────────────────────────────────────────
+   Upgrades Definition
+───────────────────────────────────────────────────────────────── */
+const UPGRADES = [
+  // ── Tier 1: Early game ──────────────────────────────────────────
+  { id:'cursor1', name:'Better Cursor',   icon:'👆', desc:'+1 per click',          clickBonus:1,    autoBonus:0,    baseCost:10      },
+  { id:'auto1',   name:'Auto Clicker',    icon:'🤖', desc:'+1 per second',          clickBonus:0,    autoBonus:1,    baseCost:50      },
+  { id:'combo1',  name:'Magic Touch',     icon:'✨',     desc:'+2/click & +2/sec',      clickBonus:2,    autoBonus:2,    baseCost:90      },
+
+  // ── Tier 2: Early-mid ───────────────────────────────────────────
+  { id:'cursor2', name:'Power Click',     icon:'✊',     desc:'+3 per click',           clickBonus:3,    autoBonus:0,    baseCost:150     },
+  { id:'auto2',   name:'Click Farm',      icon:'🏭', desc:'+5 per second',          clickBonus:0,    autoBonus:5,    baseCost:500     },
+  { id:'combo2',  name:'Lucky Charm',     icon:'🍀', desc:'+5/click & +10/sec',     clickBonus:5,    autoBonus:10,   baseCost:800     },
+
+  // ── Tier 3: Mid game ────────────────────────────────────────────
+  { id:'cursor3', name:'Mega Cursor',     icon:'⚡',     desc:'+10 per click',          clickBonus:10,   autoBonus:0,    baseCost:1500    },
+  { id:'auto3',   name:'Turbo Auto',      icon:'🚀', desc:'+20 per second',         clickBonus:0,    autoBonus:20,   baseCost:5000    },
+  { id:'cursor5', name:'Rapid Tap',       icon:'💥', desc:'+25 per click',          clickBonus:25,   autoBonus:0,    baseCost:9000    },
+  { id:'auto5',   name:'Bot Army',        icon:'👾', desc:'+50 per second',         clickBonus:0,    autoBonus:50,   baseCost:25000   },
+
+  // ── Tier 4: Late game ───────────────────────────────────────────
+  { id:'cursor4', name:'Ultra Click',     icon:'💎', desc:'+50 per click',          clickBonus:50,   autoBonus:0,    baseCost:18000   },
+  { id:'auto4',   name:'Click Matrix',    icon:'🌀', desc:'+100 per second',        clickBonus:0,    autoBonus:100,  baseCost:60000   },
+  { id:'combo3',  name:'Storm Surge',     icon:'⛈️',  desc:'+75/click & +75/sec', clickBonus:75,   autoBonus:75,   baseCost:120000  },
+
+  // ── Tier 5: End game ────────────────────────────────────────────
+  { id:'cursor6', name:'Quantum Click',   icon:'🔮', desc:'+500 per click',         clickBonus:500,  autoBonus:0,    baseCost:500000  },
+  { id:'auto6',   name:'AI Overlord',     icon:'🧠', desc:'+500 per second',        clickBonus:0,    autoBonus:500,  baseCost:1000000 },
+  { id:'combo4',  name:'Singularity',     icon:'🌟', desc:'+1K/click & +1K/sec',   clickBonus:1000, autoBonus:1000, baseCost:5000000 },
+];
+
+// owned counts per upgrade
+const owned = {};
+const MAX_OWNED = 4;
+UPGRADES.forEach(u => owned[u.id] = 0);
+
+function upgradeCost(upgrade) {
+  if (owned[upgrade.id] >= MAX_OWNED) return Infinity;
+  return Math.floor(upgrade.baseCost * Math.pow(1.15, owned[upgrade.id]));
+}
+
+function recomputePower() {
+  clickPower = 1;
+  autoPerSec = 0;
+  UPGRADES.forEach(u => {
+    const n = owned[u.id];
+    if (n > 0) {
+      // Each successive purchase doubles the previous tier: total = base*(2^n - 1)
+      clickPower += u.clickBonus * (Math.pow(2, n) - 1);
+      autoPerSec += u.autoBonus  * (Math.pow(2, n) - 1);
+    }
+  });
+  document.getElementById('subClick').textContent = '+' + fmtNum(clickPower);
+  document.getElementById('subAuto').textContent  = fmtNum(autoPerSec);
+}
+
+function fmtNum(n) {
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Shop DOM + scroll buttons
+───────────────────────────────────────────────────────────────── */
+const shopList     = document.getElementById('shopList');
+const shopViewport = document.getElementById('shopViewport');
+const scrollUpBtn  = document.getElementById('scrollUp');
+const scrollDnBtn  = document.getElementById('scrollDown');
+const SCROLL_STEP  = 168; // px per button press
+
+function updateScrollBtns() {
+  const sl = shopList;
+  const atTop    = sl.scrollTop <= 2;
+  const atBottom = sl.scrollTop + sl.clientHeight >= sl.scrollHeight - 2;
+  scrollUpBtn.disabled = atTop;
+  scrollDnBtn.disabled = atBottom;
+  shopViewport.classList.toggle('at-top',    atTop);
+  shopViewport.classList.toggle('at-bottom', atBottom);
+}
+
+scrollUpBtn.addEventListener('click', () => {
+  shopList.scrollBy({ top: -SCROLL_STEP, behavior: 'smooth' });
+});
+scrollDnBtn.addEventListener('click', () => {
+  shopList.scrollBy({ top:  SCROLL_STEP, behavior: 'smooth' });
+});
+shopList.addEventListener('scroll', updateScrollBtns, { passive: true });
+
+function buildShop() {
+  shopList.innerHTML = '';
+  UPGRADES.forEach(u => {
+    const card = document.createElement('div');
+    card.className = 'upgrade';
+    card.id = 'upg-' + u.id;
+    card.innerHTML = `
+      <div class="upgrade-icon">${u.icon}</div>
+      <div class="upgrade-info">
+        <div class="upgrade-name">${u.name}</div>
+        <div class="upgrade-desc" id="desc-${u.id}">${u.desc}</div>
+      </div>
+      <div class="upgrade-right">
+        <div class="upgrade-cost" id="cost-${u.id}">${fmtNum(upgradeCost(u))}</div>
+        <div class="upgrade-owned" id="owned-${u.id}">x0</div>
+      </div>
+    `;
+    card.addEventListener('click', e => buyUpgrade(u, e));
+    card.addEventListener('touchstart', e => buyUpgrade(u, e), { passive: false });
+    card.addEventListener('touchend', e => e.preventDefault());
+    shopList.appendChild(card);
+  });
+}
+
+function refreshShopAffordability() {
+  UPGRADES.forEach(u => {
+    const card = document.getElementById('upg-' + u.id);
+    const cost = upgradeCost(u);
+    const n    = owned[u.id];
+
+    document.getElementById('cost-' + u.id).textContent = fmtNum(cost);
+    document.getElementById('owned-' + u.id).textContent = 'x' + n;
+
+    // Show what the NEXT purchase will contribute (doubles each time)
+    const nextTier = Math.pow(2, n); // 1, 2, 4, 8, ...
+    const descEl   = document.getElementById('desc-' + u.id);
+    if (n >= MAX_OWNED) {
+      descEl.textContent = '★ Fully upgraded ★';
+      card.classList.remove('affordable', 'locked');
+      card.classList.add('maxed');
+      return;
+    }
+    card.classList.remove('maxed');
+    if (n === 0) {
+      descEl.textContent = u.desc;
+    } else if (u.clickBonus > 0) {
+      descEl.textContent = `Next: +${fmtNum(u.clickBonus * nextTier)}/click (2×)`;
+    } else {
+      descEl.textContent = `Next: +${fmtNum(u.autoBonus * nextTier)}/sec (2×)`;
+    }
+
+    if (count >= cost) {
+      card.classList.add('affordable');
+      card.classList.remove('locked');
+    } else {
+      card.classList.remove('affordable');
+      card.classList.add('locked');
+    }
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Buy upgrade
+───────────────────────────────────────────────────────────────── */
+const toastEl = document.getElementById('toast');
+let toastTimeout;
+
+function showToast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 1600);
+}
+
+function buyUpgrade(upgrade, e) {
+  if (e) e.preventDefault();
+  if (owned[upgrade.id] >= MAX_OWNED) return;
+  const cost = upgradeCost(upgrade);
+  if (count < cost) return;
+
+  count -= cost;
+  owned[upgrade.id]++;
+  recomputePower();
+  refreshShopAffordability();
+
+  // Ripple inside card
+  const card = document.getElementById('upg-' + upgrade.id);
+  card.classList.remove('bought-flash');
+  void card.offsetWidth;
+  card.classList.add('bought-flash');
+  spawnUpgradeRipple(card, e);
+
+  // Balance bump
+  const balEl = document.getElementById('shopBalance');
+  balEl.classList.remove('bump');
+  void balEl.offsetWidth;
+  balEl.classList.add('bump');
+  balEl.addEventListener('animationend', () => balEl.classList.remove('bump'), { once: true });
+
+  playBuy();
+  showToast(`${upgrade.icon} ${upgrade.name} purchased!`);
+}
+
+function spawnUpgradeRipple(card, e) {
+  const rect = card.getBoundingClientRect();
+  const cx = ((e && (e.clientX ?? e.touches?.[0]?.clientX)) ?? rect.left + rect.width/2) - rect.left;
+  const cy = ((e && (e.clientY ?? e.touches?.[0]?.clientY)) ?? rect.top + rect.height/2) - rect.top;
+  const r = document.createElement('div');
+  r.className = 'up-ripple';
+  r.style.cssText = `width:40px;height:40px;left:${cx-20}px;top:${cy-20}px;`;
+  card.appendChild(r);
+  r.addEventListener('animationend', () => r.remove());
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Audio
+───────────────────────────────────────────────────────────────── */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playClick() {
+  try {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.exponentialRampToValueAtTime(220, t + 0.08);
+    o.type = 'sine';
+    g.gain.setValueAtTime(0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    o.start(t); o.stop(t + 0.13);
+  } catch(e) {}
+}
+
+function playBuy() {
+  try {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    // Pleasant ascending arpeggio
+    [[440,0],[554,0.06],[659,0.12],[880,0.18]].forEach(([freq, delay]) => {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.connect(g); g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime + delay;
+      o.frequency.setValueAtTime(freq, t);
+      o.type = 'sine';
+      g.gain.setValueAtTime(0.18, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      o.start(t); o.stop(t + 0.22);
+    });
+  } catch(e) {}
+}
+
+function playAutoTick() {
+  try {
+    if (audioCtx.state === 'suspended') return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    o.frequency.setValueAtTime(320, t);
+    o.frequency.exponentialRampToValueAtTime(180, t + 0.04);
+    o.type = 'sine';
+    g.gain.setValueAtTime(0.05, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    o.start(t); o.stop(t + 0.07);
+  } catch(e) {}
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Canvas particles
+───────────────────────────────────────────────────────────────── */
+const canvas = document.getElementById('canvas');
+const ctx2   = canvas.getContext('2d');
+let particles = [];
+
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+const COLORS = ['#a78bfa','#60a5fa','#34d399','#f472b6','#fbbf24','#fb7185','#38bdf8'];
+
+function spawnParticles(x, y, n = 18) {
+  for (let i = 0; i < n; i++) {
+    const angle = (Math.PI * 2 * i) / n + (Math.random() - 0.5) * 0.8;
+    const speed = 2.5 + Math.random() * 4.5;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1.5,
+      size: 3 + Math.random() * 5,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      life: 0.6 + Math.random() * 0.5,
+      maxLife: 0,
+      gravity: 0.12 + Math.random() * 0.06
+    });
+    particles[particles.length-1].maxLife = particles[particles.length-1].life;
+  }
+}
+
+function drawParticles(dt) {
+  ctx2.clearRect(0, 0, canvas.width, canvas.height);
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    p.life -= dt; p.x += p.vx; p.y += p.vy;
+    p.vy += p.gravity; p.vx *= 0.97;
+    const alpha = Math.max(0, p.life / p.maxLife);
+    ctx2.save();
+    ctx2.globalAlpha = alpha;
+    ctx2.fillStyle = p.color;
+    ctx2.shadowColor = p.color;
+    ctx2.shadowBlur = 8;
+    ctx2.beginPath();
+    ctx2.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.restore();
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Animation loop
+───────────────────────────────────────────────────────────────── */
+let lastTime = performance.now();
+let autoTickAccum = 0; // for auto-tick sound throttle
+
+function loop(now) {
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  // ── Auto clicker ──
+  if (autoPerSec > 0) {
+    autoAccum += autoPerSec * dt;
+    if (autoAccum >= 1) {
+      const gained = Math.floor(autoAccum);
+      autoAccum -= gained;
+      count += gained;
+
+      // Soft auto-tick sound (throttled to max once per 0.3s)
+      autoTickAccum += dt;
+      if (autoTickAccum >= 0.3) {
+        autoTickAccum = 0;
+        playAutoTick();
+      }
+    }
+  }
+
+  // ── Smooth counter ──
+  if (displayCount !== count) {
+    const diff = count - displayCount;
+    displayCount += diff * Math.min(dt * 14, 1);
+    if (Math.abs(count - displayCount) < 0.5) displayCount = count;
+    document.getElementById('counter').textContent = Math.floor(displayCount).toLocaleString();
+    document.getElementById('shopBalance').textContent = Math.floor(displayCount).toLocaleString();
+  }
+
+  // ── Shop affordability (re-check periodically) ──
+  refreshShopAffordability();
+
+  // ── CPS ──
+  const now2 = Date.now();
+  clicksInWindow = clicksInWindow.filter(t => now2 - t < 1000);
+  const cps = clicksInWindow.length;
+  document.getElementById('cps').textContent = cps;
+  if (cps > bestCPS) {
+    bestCPS = cps;
+    document.getElementById('best').textContent = bestCPS;
+  }
+
+  // ── Session timer ──
+  const elapsed = Math.floor((now2 - startTime) / 1000);
+  const mm = Math.floor(elapsed / 60);
+  const ss = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('session').textContent = `${mm}:${ss}`;
+
+  drawParticles(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ─────────────────────────────────────────────────────────────────
+   Floating label
+───────────────────────────────────────────────────────────────── */
+function spawnFloatingLabel(x, y, value) {
+  const el = document.createElement('div');
+  el.className = 'float-label';
+  el.textContent = '+' + fmtNum(value);
+  const spread = (Math.random() - 0.5) * 60;
+  el.style.left = `${x + spread - 20}px`;
+  el.style.top  = `${y - 10}px`;
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Button ripple
+───────────────────────────────────────────────────────────────── */
+function spawnRipple(btn, e) {
+  const rect = btn.getBoundingClientRect();
+  const cx = (e.clientX ?? rect.left + rect.width/2) - rect.left;
+  const cy = (e.clientY ?? rect.top  + rect.height/2) - rect.top;
+  const size = Math.max(rect.width, rect.height) * 0.9;
+  const r = document.createElement('div');
+  r.className = 'ripple';
+  r.style.cssText = `width:${size}px;height:${size}px;left:${cx-size/2}px;top:${cy-size/2}px;`;
+  btn.appendChild(r);
+  r.addEventListener('animationend', () => r.remove());
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Screen flash
+───────────────────────────────────────────────────────────────── */
+const flash = document.getElementById('flash');
+function triggerFlash() {
+  flash.classList.remove('pop');
+  void flash.offsetWidth;
+  flash.classList.add('pop');
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Counter bump
+───────────────────────────────────────────────────────────────── */
+const counterEl = document.getElementById('counter');
+function bumpCounter() {
+  counterEl.classList.remove('bump');
+  void counterEl.offsetWidth;
+  counterEl.classList.add('bump');
+  counterEl.addEventListener('transitionend', () => counterEl.classList.remove('bump'), { once: true });
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Streak
+───────────────────────────────────────────────────────────────── */
+const streakEl = document.getElementById('streak');
+function showStreak(cps) {
+  if (cps >= 5) {
+    const emojis = cps >= 15 ? '🔥🔥🔥' : cps >= 10 ? '🔥🔥' : '🔥';
+    streakEl.textContent = `${emojis} ${cps}/s`;
+    streakEl.classList.add('visible');
+    clearTimeout(streakTimer);
+    streakTimer = setTimeout(() => streakEl.classList.remove('visible'), 1000);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   Main click handler
+───────────────────────────────────────────────────────────────── */
+const btn = document.getElementById('btn');
+
+function handleClick(e) {
+  e.preventDefault();
+  const clientX = e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? window.innerWidth / 2;
+  const clientY = e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? window.innerHeight / 2;
+
+  count += clickPower;
+  clicksInWindow.push(Date.now());
+
+  playClick();
+  bumpCounter();
+  triggerFlash();
+  spawnRipple(btn, { clientX, clientY });
+  spawnParticles(clientX, clientY, 18 + Math.min(clickPower, 40));
+  spawnFloatingLabel(clientX, clientY - 30, clickPower);
+
+  btn.classList.add('pressed');
+  setTimeout(() => btn.classList.remove('pressed'), 130);
+
+  showStreak(clicksInWindow.filter(t => Date.now() - t < 1000).length);
+}
+
+btn.addEventListener('click',      handleClick);
+btn.addEventListener('touchstart', handleClick, { passive: false });
+btn.addEventListener('touchend', e => e.preventDefault());
+
+document.addEventListener('keydown', e => {
+  if ((e.code === 'Space' || e.code === 'Enter') && !e.repeat) {
+    handleClick({ clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────
+   Init
+───────────────────────────────────────────────────────────────── */
+buildShop();
+refreshShopAffordability();
+recomputePower();
+// Set initial scroll button states now that cards exist
+requestAnimationFrame(updateScrollBtns);
+</script>
+</body>
+</html>
